@@ -1,8 +1,6 @@
 package topology
 
-import (
-	"tone/tools"
-)
+import "github.com/cnapache/ToneDFS/tools"
 
 //FID
 type FID string

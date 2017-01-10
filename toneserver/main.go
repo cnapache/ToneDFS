@@ -2,100 +2,61 @@ package main
 
 import (
 	"flag"
+	"io"
+	"log"
 	"net/http"
-	"strconv"
-	"tone/topology"
-
-	"fmt"
-
 	"os"
-
-	"path/filepath"
-
-	"io/ioutil"
-
 	"time"
 
-	"sync"
-
+	"github.com/cnapache/ToneDFS/topology"
+	"github.com/gogap/go-gelf/gelf"
+	"github.com/gogap/logrus"
+	"github.com/gogap/logrus/hooks/graylog"
 	"github.com/gorilla/mux"
 )
 
 var confPath = flag.String("conf", "", "conf file path")
 var superBlock topology.SuperBlock
 
-var fileInfoCache = make(map[string]*topology.FilePack)
-
 func main() {
-	flag.Parse()
-
-	superBlock = *topology.NewSuperBlock("W:\\go\\tonedfs\\storage")
-	startTime := time.Now()
-	wg := new(sync.WaitGroup)
+	//flag.Parse()
 	count := 0
-	for count < 5000 {
-		index := 0
-		for index < 10 {
-			wg.Add(1)
-			file, err := os.Open(filepath.Join("W:\\go\\tonedfs\\storage", strconv.Itoa(index)+".jpg"))
-			if err != nil {
-				panic(err)
-			}
-			defer file.Close()
-			fileByte, _ := ioutil.ReadAll(file)
-			go func(fileData []byte) {
-
-				fileblock := topology.NewFileBlock("123.png", fileData)
-				needle, err := superBlock.Put("123.png", fileData)
-				if err != nil {
-					fmt.Println(err)
-				}
-				//position, length := needle.GetFilePosition()
-				//fmt.Printf("fid:%v p:%v l:%v\n", needle.Fid, needle.Position, needle.TotalLength)
-				//fileInfoCache[needle.Fid] = needle
-				addCache(needle.Fid, needle)
-				wg.Done()
-			}(fileByte)
-			index++
+	for count < 10 {
+		gelfWriter, err := gelf.NewWriter("192.168.31.9:12201")
+		if err != nil {
+			log.Fatalf("gelf.NewWriter: %s", err)
 		}
+		// log to both stderr and graylog2
+		log.SetOutput(io.MultiWriter(os.Stderr, gelfWriter))
+		log.Printf("logging to stderr & graylog2@'%s'", "graylogAddr")
+		//log.Fatal("asdasd")
 		count++
+		time.Sleep(1 * time.Nanosecond)
 	}
+	return
 
-	wg.Wait()
-	fmt.Println(len(fileInfoCache))
-	fmt.Println(time.Since(startTime))
-	serverStart()
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+	glog, err := graylog.NewHook("192.168.31.9:12201", "yijifu", nil)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+	logrus.SetLevel(logrus.DebugLevel)
+	logrus.AddHook(glog)
+	//logrus.AddHook(file.NewHook("logs/ss.log"))
+	logrus.Debug("asdas")
+	logrus.WithField("biz", "member").Errorf("member not login,member is %s", "100")
+
+	//serverStart()
 }
 
 func serverStart() {
 	r := mux.NewRouter()
 	r.HandleFunc("/{fid}", func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-
-		if fileInfoCache[vars["fid"]] != nil {
-			fileinfo := fileInfoCache[vars["fid"]]
-			needle := topology.NewNeedle(fileinfo.Position, fileinfo.TotalLength, fileinfo.NameLength)
-			w.Header().Add("Content-Type", "image/jpeg")
-			superBlock.TakeNeedleAndWriterToHttpResponseWriter(w, &needle)
-		}
 		w.WriteHeader(404)
-
 	})
 	http.Handle("/", r)
 	if err := http.ListenAndServe(":9230", nil); err != nil {
 		panic(err)
 	}
 }
-
-var cacheLock = new(sync.Mutex)
-
-func addCache(key string, fileinfo *topology.FileInfo) {
-	cacheLock.Lock()
-	fileInfoCache[key] = fileinfo
-	cacheLock.Unlock()
-}
-
-// func (server *Server) InitServer(confPath string) {
-// 	var tsc config.ToneServerConfig
-// 	tsc.InitConfig(confPath)
-// }

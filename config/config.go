@@ -1,6 +1,6 @@
 package config
 
-import "tone/tools"
+import "github.com/cnapache/ToneDFS/tools"
 
 type ToneServerConfig struct {
 	DataCenterName   string
